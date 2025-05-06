@@ -1,19 +1,28 @@
-# Этап сборки приложения
-FROM golang:1.24.0-alpine AS builder
-WORKDIR /app
-# Копируем файлы зависимостей
-COPY go.mod go.sum ./
-RUN go mod download
-# Копируем исходный код и собираем приложение
-COPY . . 
-RUN CGO_ENABLED=0 GOOS=linux go build -o backend-service .
+FROM golang:1.24-alpine AS builder
 
-# Этап запуска приложения
-FROM alpine:latest AS runner
-# Добавляем необходимые пакеты
-RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
-# Копируем результаты сборки из первого этапа
-COPY --from=builder /app/ ./
-EXPOSE 8080
-CMD ["./app"]
+
+COPY go.mod go.sum ./
+
+RUN go mod tidy
+
+COPY . .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o main .
+
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates curl
+
+WORKDIR /root/
+
+COPY --from=builder /app/main .
+
+COPY .env .
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/healthz || exit 1
+
+CMD ["./main"]
+
+
